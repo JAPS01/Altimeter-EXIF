@@ -1,6 +1,32 @@
 import { useState, useCallback } from 'react'
 import piexif from 'piexifjs'
 
+// Extrae un valor racional EXIF de forma segura (puede ser [num, denom] o número directo)
+function extractRational(value) {
+  if (value === null || value === undefined) return 0
+  if (Array.isArray(value)) {
+    const num = value[0]
+    const denom = value[1]
+    if (denom === 0 || denom === undefined) return 0
+    return num / denom
+  }
+  if (typeof value === 'number') return value
+  return 0
+}
+
+// Extrae coordenadas GPS de un array de valores racionales
+function extractGpsCoordinate(gpsArray) {
+  if (!gpsArray || !Array.isArray(gpsArray) || gpsArray.length < 3) return NaN
+
+  const degrees = extractRational(gpsArray[0])
+  const minutes = extractRational(gpsArray[1])
+  const seconds = extractRational(gpsArray[2])
+
+  if (isNaN(degrees) || isNaN(minutes) || isNaN(seconds)) return NaN
+
+  return degrees + minutes / 60 + seconds / 3600
+}
+
 // Convierte grados decimales a formato GMS (Grados, Minutos, Segundos)
 export function decimalToGMS(decimal) {
   const absolute = Math.abs(decimal)
@@ -62,48 +88,52 @@ export function useExif() {
 
           if (exifData.GPS && exifData.GPS[piexif.GPSIFD.GPSLatitude]) {
             const lat = exifData.GPS[piexif.GPSIFD.GPSLatitude]
-            const latRef = exifData.GPS[piexif.GPSIFD.GPSLatitudeRef]
+            const latRef = exifData.GPS[piexif.GPSIFD.GPSLatitudeRef] || 'N'
             const lng = exifData.GPS[piexif.GPSIFD.GPSLongitude]
-            const lngRef = exifData.GPS[piexif.GPSIFD.GPSLongitudeRef]
+            const lngRef = exifData.GPS[piexif.GPSIFD.GPSLongitudeRef] || 'E'
 
             if (lat && lng) {
-              const latDecimal = gmsToDecimal(
-                lat[0][0] / lat[0][1],
-                lat[1][0] / lat[1][1],
-                lat[2][0] / lat[2][1],
-                latRef
-              )
-              const lngDecimal = gmsToDecimal(
-                lng[0][0] / lng[0][1],
-                lng[1][0] / lng[1][1],
-                lng[2][0] / lng[2][1],
-                lngRef
-              )
+              // Extraer coordenadas usando función robusta
+              let latDecimal = extractGpsCoordinate(lat)
+              let lngDecimal = extractGpsCoordinate(lng)
 
-              // Extraer altitud
-              let altitude = null
-              if (exifData.GPS[piexif.GPSIFD.GPSAltitude]) {
-                const alt = exifData.GPS[piexif.GPSIFD.GPSAltitude]
-                altitude = alt[0] / alt[1]
-                // Si GPSAltitudeRef es 1, está bajo el nivel del mar
-                if (exifData.GPS[piexif.GPSIFD.GPSAltitudeRef] === 1) {
-                  altitude = -altitude
+              // Aplicar dirección
+              if (!isNaN(latDecimal) && (latRef === 'S' || latRef === 's')) {
+                latDecimal = -Math.abs(latDecimal)
+              }
+              if (!isNaN(lngDecimal) && (lngRef === 'W' || lngRef === 'w' || lngRef === 'O' || lngRef === 'o')) {
+                lngDecimal = -Math.abs(lngDecimal)
+              }
+
+              // Solo procesar si las coordenadas son válidas
+              if (!isNaN(latDecimal) && !isNaN(lngDecimal)) {
+                // Extraer altitud
+                let altitude = null
+                if (exifData.GPS[piexif.GPSIFD.GPSAltitude]) {
+                  const alt = exifData.GPS[piexif.GPSIFD.GPSAltitude]
+                  altitude = extractRational(alt)
+                  if (isNaN(altitude)) altitude = null
+                  // Si GPSAltitudeRef es 1, está bajo el nivel del mar
+                  if (altitude !== null && exifData.GPS[piexif.GPSIFD.GPSAltitudeRef] === 1) {
+                    altitude = -altitude
+                  }
                 }
-              }
 
-              // Extraer dirección de la cámara (GPSImgDirection)
-              let direction = null
-              if (exifData.GPS[piexif.GPSIFD.GPSImgDirection]) {
-                const dir = exifData.GPS[piexif.GPSIFD.GPSImgDirection]
-                direction = dir[0] / dir[1]
-              }
+                // Extraer dirección de la cámara (GPSImgDirection)
+                let direction = null
+                if (exifData.GPS[piexif.GPSIFD.GPSImgDirection]) {
+                  const dir = exifData.GPS[piexif.GPSIFD.GPSImgDirection]
+                  direction = extractRational(dir)
+                  if (isNaN(direction)) direction = null
+                }
 
-              gpsData = {
-                latitude: latDecimal,
-                longitude: lngDecimal,
-                formatted: formatGMS(latDecimal, lngDecimal),
-                altitude,
-                direction
+                gpsData = {
+                  latitude: latDecimal,
+                  longitude: lngDecimal,
+                  formatted: formatGMS(latDecimal, lngDecimal),
+                  altitude,
+                  direction
+                }
               }
             }
           }
