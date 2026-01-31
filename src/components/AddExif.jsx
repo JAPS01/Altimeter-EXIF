@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react'
 import { useOcr } from '../hooks/useOcr'
 import { useExif, formatGMS } from '../hooks/useExif'
+import JSZip from 'jszip'
 
 export default function AddExif() {
   const [files, setFiles] = useState([])
@@ -8,7 +9,7 @@ export default function AddExif() {
   const [batchProgress, setBatchProgress] = useState({ current: 0, total: 0, percent: 0 })
 
   const { extractCoordinates, progress, isProcessing, error: ocrError, setError: setOcrError } = useOcr()
-  const { writeGpsExif, downloadImage, setError: setExifError } = useExif()
+  const { writeGpsExif, dataUrlToBlob } = useExif()
 
   const handleFileChange = (e) => {
     const selectedFiles = Array.from(e.target.files)
@@ -64,17 +65,46 @@ export default function AddExif() {
 
   const handleDownload = (result, index) => {
     const filename = `EXIF_GPS_${index + 1}.jpg`
-    downloadImage(result.dataUrl, filename)
+    const blob = dataUrlToBlob(result.dataUrl)
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = filename
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
   }
 
-  const handleDownloadAll = () => {
-    results
-      .filter((r) => r.success)
-      .forEach((result, index) => {
-        setTimeout(() => {
-          handleDownload(result, index)
-        }, index * 200)
-      })
+  const handleDownloadAll = async () => {
+    const successResults = results.filter((r) => r.success)
+
+    if (successResults.length === 0) return
+
+    if (successResults.length === 1) {
+      handleDownload(successResults[0], 0)
+      return
+    }
+
+    // Múltiples archivos: crear ZIP
+    const zip = new JSZip()
+    const firstFileName = successResults[0].file.name.replace(/\.[^/.]+$/, '')
+
+    successResults.forEach((result, index) => {
+      const filename = `EXIF_GPS_${index + 1}.jpg`
+      const base64Data = result.dataUrl.split(',')[1]
+      zip.file(filename, base64Data, { base64: true })
+    })
+
+    const zipBlob = await zip.generateAsync({ type: 'blob' })
+    const url = URL.createObjectURL(zipBlob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `${firstFileName}_EXIF_GPS.zip`
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
   }
 
   const successCount = results.filter((r) => r.success).length
@@ -144,7 +174,7 @@ export default function AddExif() {
             </h3>
             {successCount > 0 && (
               <button onClick={handleDownloadAll} className="btn-secondary">
-                Descargar Todos
+                {successCount > 1 ? 'Descargar ZIP' : 'Descargar'}
               </button>
             )}
           </div>

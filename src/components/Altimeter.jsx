@@ -75,13 +75,12 @@ export default function Altimeter() {
         // Usar la dimensión menor para calcular tamaños (funciona en horizontal y vertical)
         const minDimension = Math.min(img.width, img.height)
 
-        // Tamaños de fuente 2x más grandes, basados en dimensión menor
-        const fontSizeLarge = Math.max(36, Math.min(90, minDimension / 10))
-        const fontSizeSmall = Math.max(36, Math.min(90, minDimension / 10))
-        const lineSpacing = fontSizeLarge * 0.15
+        // Tamaño de fuente único para ambas líneas
+        const fontSize = Math.max(36, Math.min(90, minDimension / 10))
+        const lineSpacing = fontSize * 0.2
 
-        // Calcular altura de franja basada en el contenido
-        const totalTextHeight = fontSizeLarge + lineSpacing + fontSizeSmall
+        // Calcular altura de franja basada en el contenido (2 líneas del mismo tamaño)
+        const totalTextHeight = fontSize * 2 + lineSpacing
         const stampHeight = totalTextHeight + (minDimension * 0.04)
 
         // Franja gris oscura transparente en la parte inferior
@@ -89,6 +88,9 @@ export default function Altimeter() {
         ctx.fillRect(0, img.height - stampHeight, canvas.width, stampHeight)
 
         ctx.fillStyle = '#ffffff'
+        ctx.font = `bold ${fontSize}px monospace`
+        ctx.textAlign = 'center'
+        ctx.textBaseline = 'middle'
 
         // Construir textos
         let coordText = `${gpsData.formatted.latitude} | ${gpsData.formatted.longitude}`
@@ -113,19 +115,14 @@ export default function Altimeter() {
 
         // Calcular posición vertical centrada
         const stampTop = img.height - stampHeight
-        const contentHeight = fontSizeLarge + lineSpacing + fontSizeSmall
-        const verticalPadding = (stampHeight - contentHeight) / 2
-        const firstLineY = stampTop + verticalPadding + (fontSizeLarge / 2)
-        const secondLineY = firstLineY + (fontSizeLarge / 2) + lineSpacing + (fontSizeSmall / 2)
+        const verticalPadding = (stampHeight - totalTextHeight) / 2
+        const firstLineY = stampTop + verticalPadding + (fontSize / 2)
+        const secondLineY = firstLineY + fontSize + lineSpacing
 
         // === LÍNEA 1: Coordenadas + Dirección (centrado) ===
-        ctx.font = `bold ${fontSizeLarge}px monospace`
-        ctx.textAlign = 'center'
-        ctx.textBaseline = 'middle'
         ctx.fillText(coordText, canvas.width / 2, firstLineY)
 
         // === LÍNEA 2: Hora | Fecha | Altitud (centrado) ===
-        ctx.font = `bold ${fontSizeSmall}px monospace`
         ctx.fillText(secondLineText, canvas.width / 2, secondLineY)
 
         resolve(canvas.toDataURL('image/jpeg', 0.95))
